@@ -1,0 +1,1202 @@
+import React, { useState, useEffect } from 'react';
+import { Users, School, MessageSquare, ClipboardCheck, Plus, LogOut, Bell, Calendar, AlertTriangle, Info, Megaphone, BookOpen, Clock, Edit, Trash2, Copy } from 'lucide-react';
+
+// Configuration Supabase
+const SUPABASE_URL = 'https://hsercitkdpjgftcnctze.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZXJjaXRrZHBqZ2Z0Y25jdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODY0ODcsImV4cCI6MjA3ODQ2MjQ4N30.LY66K60q4NXV4A_MzVWL9Dd5rhov9ihFUUvbfDFsPSI';
+
+// Client Supabase simple
+const supabase = {
+  from: (table) => ({
+    select: async (columns = '*') => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${columns}`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+      return { data: await res.json(), error: res.ok ? null : 'Error' };
+    },
+    insert: async (data) => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(data)
+      });
+      return { data: await res.json(), error: res.ok ? null : 'Error' };
+    },
+    update: async (data) => ({
+      eq: async (column, value) => {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(data)
+        });
+        return { data: await res.json(), error: res.ok ? null : 'Error' };
+      }
+    }),
+    delete: async () => ({
+      eq: async (column, value) => {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
+          method: 'DELETE',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+        return { error: res.ok ? null : 'Error' };
+      }
+    })
+  })
+};
+
+export default function SchoolManagement() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(true);
+  
+  // États pour les données
+  const [accounts, setAccounts] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [attendance, setAttendance] = useState([]);
+  const [homework, setHomework] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  
+  // Formulaires
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [showClassForm, setShowClassForm] = useState(false);
+  const [showStudentForm, setShowStudentForm] = useState(false);
+  const [showMessageForm, setShowMessageForm] = useState(false);
+  const [showAlertForm, setShowAlertForm] = useState(false);
+  const [showAttendanceForm, setShowAttendanceForm] = useState(false);
+  const [showHomeworkForm, setShowHomeworkForm] = useState(false);
+  const [editingHomework, setEditingHomework] = useState(null);
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
+
+  // Chargement initial des données
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [acc, cls, stu, msg, alt, att, hmw, sch] = await Promise.all([
+        supabase.from('accounts').select(),
+        supabase.from('classes').select(),
+        supabase.from('students').select(),
+        supabase.from('messages').select(),
+        supabase.from('alerts').select(),
+        supabase.from('attendance').select(),
+        supabase.from('homework').select(),
+        supabase.from('schedules').select()
+      ]);
+
+      setAccounts(acc.data || []);
+      setClasses(cls.data || []);
+      setStudents(stu.data || []);
+      setMessages(msg.data || []);
+      setAlerts(alt.data || []);
+      setAttendance(att.data || []);
+      setHomework(hmw.data || []);
+      setSchedules(sch.data || []);
+    } catch (e) {
+      console.error('Erreur chargement:', e);
+    }
+    setLoading(false);
+  };
+
+  const handleLogin = () => {
+    const user = accounts.find(a => a.username === loginForm.username && a.password === loginForm.password);
+    if (user) {
+      setCurrentUser(user);
+      setLoginForm({ username: '', password: '' });
+    } else {
+      alert('Identifiants incorrects');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveTab('dashboard');
+  };
+
+  const createAccount = async (formData) => {
+    const { data } = await supabase.from('accounts').insert([{ ...formData, role: 'teacher' }]);
+    if (data) {
+      setAccounts([...accounts, ...data]);
+      setShowAccountForm(false);
+    }
+  };
+
+  const createClass = async (formData) => {
+    const { data } = await supabase.from('classes').insert([{ ...formData, teacher_id: null }]);
+    if (data) {
+      setClasses([...classes, ...data]);
+      setShowClassForm(false);
+    }
+  };
+
+  const updateClassTeacher = async (classId, teacherId) => {
+    const { data } = await supabase.from('classes').update({ teacher_id: teacherId }).eq('id', classId);
+    if (data) {
+      setClasses(classes.map(c => c.id === classId ? { ...c, teacher_id: teacherId } : c));
+    }
+  };
+
+  const addStudent = async (formData) => {
+    const { data } = await supabase.from('students').insert([formData]);
+    if (data) {
+      setStudents([...students, ...data]);
+      setShowStudentForm(false);
+    }
+  };
+
+  const sendMessage = async (formData) => {
+    const newMessage = {
+      ...formData,
+      sender: currentUser.name,
+      date: new Date().toISOString()
+    };
+    const { data } = await supabase.from('messages').insert([newMessage]);
+    if (data) {
+      setMessages([...messages, ...data]);
+      setShowMessageForm(false);
+    }
+  };
+
+  const createAlert = async (formData) => {
+    const newAlert = {
+      ...formData,
+      created_by: currentUser.name,
+      date: new Date().toISOString()
+    };
+    const { data } = await supabase.from('alerts').insert([newAlert]);
+    if (data) {
+      setAlerts([...alerts, ...data]);
+      setShowAlertForm(false);
+    }
+  };
+
+  const deleteAlert = async (id) => {
+    if (confirm('Supprimer cette alerte ?')) {
+      await supabase.from('alerts').delete().eq('id', id);
+      setAlerts(alerts.filter(a => a.id !== id));
+    }
+  };
+
+  const submitAttendance = async (classId, presentStudents) => {
+    const classStudents = students.filter(s => s.class_id === parseInt(classId));
+    const reasons = ['Enfant malade', 'Retard', 'Problème de route', 'Rendez-vous médical', 'Absence justifiée'];
+    
+    const newAttendance = classStudents.map(student => ({
+      student_id: student.id,
+      student_name: `${student.first_name} ${student.last_name}`,
+      class_id: parseInt(classId),
+      class_name: classes.find(c => c.id === parseInt(classId))?.name,
+      present: presentStudents.includes(student.id),
+      reason: presentStudents.includes(student.id) ? null : reasons[Math.floor(Math.random() * reasons.length)],
+      date: new Date().toISOString().split('T')[0],
+      teacher_name: currentUser.name
+    }));
+    
+    const { data } = await supabase.from('attendance').insert(newAttendance);
+    if (data) {
+      setAttendance([...attendance, ...data]);
+      setShowAttendanceForm(false);
+      alert('Appel enregistré avec succès !');
+    }
+  };
+
+  const addHomework = async (formData) => {
+    if (editingHomework) {
+      const { data } = await supabase.from('homework').update(formData).eq('id', editingHomework.id);
+      if (data) {
+        setHomework(homework.map(h => h.id === editingHomework.id ? data[0] : h));
+      }
+      setEditingHomework(null);
+    } else {
+      const newHomework = {
+        ...formData,
+        teacher_name: currentUser.name,
+        teacher_id: currentUser.id,
+        created_date: new Date().toISOString()
+      };
+      const { data } = await supabase.from('homework').insert([newHomework]);
+      if (data) {
+        setHomework([...homework, ...data]);
+      }
+    }
+    setShowHomeworkForm(false);
+  };
+
+  const deleteHomework = async (id) => {
+    if (confirm('Supprimer ce devoir ?')) {
+      await supabase.from('homework').delete().eq('id', id);
+      setHomework(homework.filter(h => h.id !== id));
+    }
+  };
+
+  const editHomework = (hw) => {
+    setEditingHomework(hw);
+    setShowHomeworkForm(true);
+  };
+
+  const addScheduleItem = async (formData) => {
+    if (editingSchedule) {
+      const { data } = await supabase.from('schedules').update(formData).eq('id', editingSchedule.id);
+      if (data) {
+        setSchedules(schedules.map(s => s.id === editingSchedule.id ? data[0] : s));
+      }
+      setEditingSchedule(null);
+    } else {
+      const { data } = await supabase.from('schedules').insert([formData]);
+      if (data) {
+        setSchedules([...schedules, ...data]);
+      }
+    }
+    setShowScheduleEditor(false);
+  };
+
+  const deleteScheduleItem = async (id) => {
+    if (confirm('Supprimer cet élément ?')) {
+      await supabase.from('schedules').delete().eq('id', id);
+      setSchedules(schedules.filter(s => s.id !== id));
+    }
+  };
+
+  const duplicateScheduleToWeek = async (scheduleItem) => {
+    const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+    const newSchedules = days.map(day => ({
+      class_id: scheduleItem.class_id,
+      day: day,
+      start_time: scheduleItem.start_time,
+      end_time: scheduleItem.end_time,
+      subject: scheduleItem.subject,
+      color: scheduleItem.color
+    }));
+    const { data } = await supabase.from('schedules').insert(newSchedules);
+    if (data) {
+      setSchedules([...schedules, ...data]);
+      alert('Copié sur toute la semaine !');
+    }
+  };
+
+  const getTeacherClass = () => {
+    return classes.find(c => c.teacher_id === currentUser.id);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center">
+        <div className="text-white text-2xl">Chargement...</div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+          <School className="w-16 h-16 mx-auto mb-4 text-blue-600" />
+          <h1 className="text-3xl font-bold text-center mb-6 text-gray-800">Connexion</h1>
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Nom d'utilisateur"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+            <button
+              onClick={handleLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition"
+            >
+              Se connecter
+            </button>
+          </div>
+          <p className="text-sm text-gray-500 text-center mt-4">
+            Connecté à Supabase ✓
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const teacherClass = currentUser.role === 'teacher' ? getTeacherClass() : null;
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <School className="w-8 h-8 text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">Gestion Scolaire</h1>
+              <p className="text-sm text-gray-600">{currentUser.name} - {currentUser.role === 'admin' ? 'Administrateur' : 'Enseignant'}</p>
+            </div>
+          </div>
+          <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition">
+            <LogOut className="w-4 h-4" />
+            Déconnexion
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Navigation */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <School className="w-4 h-4" />
+            Tableau de bord
+          </button>
+          {currentUser.role === 'admin' && (
+            <>
+              <button onClick={() => setActiveTab('accounts')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'accounts' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <Users className="w-4 h-4" />
+                Comptes
+              </button>
+              <button onClick={() => setActiveTab('classes')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'classes' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <School className="w-4 h-4" />
+                Classes
+              </button>
+              <button onClick={() => setActiveTab('students')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'students' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <Users className="w-4 h-4" />
+                Élèves
+              </button>
+              <button onClick={() => setActiveTab('attendance-view')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'attendance-view' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <ClipboardCheck className="w-4 h-4" />
+                Appels reçus
+              </button>
+              <button onClick={() => setActiveTab('alerts-admin')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'alerts-admin' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <Bell className="w-4 h-4" />
+                Alertes
+              </button>
+            </>
+          )}
+          <button onClick={() => setActiveTab('messages')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'messages' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <MessageSquare className="w-4 h-4" />
+            Messages
+          </button>
+          <button onClick={() => setActiveTab('homework')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'homework' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <BookOpen className="w-4 h-4" />
+            Cahier de texte
+          </button>
+          {currentUser.role === 'teacher' && (
+            <>
+              <button onClick={() => setActiveTab('alerts-teacher')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'alerts-teacher' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <Bell className="w-4 h-4" />
+                Alertes
+              </button>
+              <button onClick={() => setActiveTab('attendance')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'attendance' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <ClipboardCheck className="w-4 h-4" />
+                Faire l'appel
+              </button>
+              <button onClick={() => setActiveTab('schedule')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition whitespace-nowrap ${activeTab === 'schedule' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+                <Clock className="w-4 h-4" />
+                Emploi du temps
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Contenu */}
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          {/* Dashboard */}
+          {activeTab === 'dashboard' && (
+            <Dashboard 
+              students={students} 
+              classes={classes} 
+              messages={messages}
+              alerts={alerts}
+              currentUser={currentUser}
+            />
+          )}
+
+          {/* Comptes */}
+          {activeTab === 'accounts' && currentUser.role === 'admin' && (
+            <AccountsTab
+              accounts={accounts}
+              showForm={showAccountForm}
+              setShowForm={setShowAccountForm}
+              onCreate={createAccount}
+            />
+          )}
+
+          {/* Classes */}
+          {activeTab === 'classes' && currentUser.role === 'admin' && (
+            <ClassesTab
+              classes={classes}
+              accounts={accounts}
+              students={students}
+              showForm={showClassForm}
+              setShowForm={setShowClassForm}
+              onCreate={createClass}
+              onUpdateTeacher={updateClassTeacher}
+            />
+          )}
+
+          {/* Élèves */}
+          {activeTab === 'students' && currentUser.role === 'admin' && (
+            <StudentsTab
+              students={students}
+              classes={classes}
+              showForm={showStudentForm}
+              setShowForm={setShowStudentForm}
+              onAdd={addStudent}
+            />
+          )}
+
+          {/* Messages */}
+          {activeTab === 'messages' && (
+            <MessagesTab
+              messages={currentUser.role === 'teacher' && teacherClass 
+                ? messages.filter(m => m.class_id === teacherClass.id)
+                : messages}
+              classes={classes}
+              currentUser={currentUser}
+              showForm={showMessageForm}
+              setShowForm={setShowMessageForm}
+              onSend={sendMessage}
+            />
+          )}
+
+          {/* Alertes Admin */}
+          {activeTab === 'alerts-admin' && currentUser.role === 'admin' && (
+            <AlertsAdminTab
+              alerts={alerts}
+              showForm={showAlertForm}
+              setShowForm={setShowAlertForm}
+              onCreate={createAlert}
+              onDelete={deleteAlert}
+            />
+          )}
+
+          {/* Alertes Enseignant */}
+          {activeTab === 'alerts-teacher' && currentUser.role === 'teacher' && (
+            <AlertsTeacherTab alerts={alerts} />
+          )}
+
+          {/* Faire l'appel */}
+          {activeTab === 'attendance' && currentUser.role === 'teacher' && (
+            <AttendanceTab
+              classes={classes.filter(c => c.teacher_id === currentUser.id)}
+              students={students}
+              showForm={showAttendanceForm}
+              setShowForm={setShowAttendanceForm}
+              onSubmit={submitAttendance}
+            />
+          )}
+
+          {/* Voir les appels */}
+          {activeTab === 'attendance-view' && currentUser.role === 'admin' && (
+            <AttendanceViewTab attendance={attendance} />
+          )}
+
+          {/* Cahier de texte */}
+          {activeTab === 'homework' && (
+            <HomeworkTab
+              homework={currentUser.role === 'teacher' && teacherClass
+                ? homework.filter(h => h.class_id === teacherClass.id)
+                : homework}
+              classes={classes}
+              currentUser={currentUser}
+              teacherClass={teacherClass}
+              showForm={showHomeworkForm}
+              setShowForm={setShowHomeworkForm}
+              editingHomework={editingHomework}
+              setEditingHomework={setEditingHomework}
+              onAdd={addHomework}
+              onEdit={editHomework}
+              onDelete={deleteHomework}
+            />
+          )}
+
+          {/* Emploi du temps */}
+          {activeTab === 'schedule' && (
+            <ScheduleTab
+              schedules={currentUser.role === 'teacher' && teacherClass 
+                ? schedules.filter(s => s.class_id === teacherClass.id)
+                : schedules}
+              classes={classes}
+              currentUser={currentUser}
+              teacherClass={teacherClass}
+              showEditor={showScheduleEditor}
+              setShowEditor={setShowScheduleEditor}
+              editingSchedule={editingSchedule}
+              setEditingSchedule={setEditingSchedule}
+              onAdd={addScheduleItem}
+              onDelete={deleteScheduleItem}
+              onDuplicate={duplicateScheduleToWeek}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Components for each tab
+function Dashboard({ students, classes, messages, alerts, currentUser }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Tableau de bord</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-blue-100 p-6 rounded-lg">
+          <Users className="w-8 h-8 text-blue-600 mb-2" />
+          <h3 className="text-3xl font-bold text-blue-600">{students.length}</h3>
+          <p className="text-gray-700">Élèves</p>
+        </div>
+        <div className="bg-green-100 p-6 rounded-lg">
+          <School className="w-8 h-8 text-green-600 mb-2" />
+          <h3 className="text-3xl font-bold text-green-600">{classes.length}</h3>
+          <p className="text-gray-700">Classes</p>
+        </div>
+        <div className="bg-purple-100 p-6 rounded-lg">
+          <MessageSquare className="w-8 h-8 text-purple-600 mb-2" />
+          <h3 className="text-3xl font-bold text-purple-600">{messages.length}</h3>
+          <p className="text-gray-700">Messages</p>
+        </div>
+      </div>
+      
+      {currentUser.role === 'teacher' && (
+        <div className="mt-6">
+          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-red-500" />
+            Alertes importantes
+          </h3>
+          {alerts.length === 0 ? (
+            <p className="text-gray-500">Aucune alerte pour le moment</p>
+          ) : (
+            <div className="space-y-2">
+              {alerts.slice(-5).reverse().map(alert => (
+                <div key={alert.id} className="flex items-start gap-3 p-4 bg-red-50 border-l-4 border-red-500 rounded">
+                  <AlertTriangle className="w-5 h-5 text-red-500 mt-1" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-red-800">{alert.title}</p>
+                    <p className="text-sm text-gray-700">{alert.description}</p>
+                    <p className="text-xs text-gray-500 mt-1">Par {alert.created_by} - {new Date(alert.date).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountsTab({ accounts, showForm, setShowForm, onCreate }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Gestion des comptes</h2>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <Plus className="w-4 h-4" />
+          Créer un compte
+        </button>
+      </div>
+      
+      {showForm && <AccountForm onSubmit={onCreate} onCancel={() => setShowForm(false)} />}
+      
+      <div className="space-y-2">
+        {accounts.filter(a => a.role !== 'admin').map(account => (
+          <div key={account.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+            <div>
+              <p className="font-semibold">{account.name}</p>
+              <p className="text-sm text-gray-600">@{account.username}</p>
+            </div>
+            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Enseignant</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ClassesTab({ classes, accounts, students, showForm, setShowForm, onCreate, onUpdateTeacher }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Gestion des classes</h2>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <Plus className="w-4 h-4" />
+          Créer une classe
+        </button>
+      </div>
+      
+      {showForm && <ClassForm onSubmit={onCreate} onCancel={() => setShowForm(false)} />}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {classes.map(cls => (
+          <div key={cls.id} className="p-4 bg-gray-50 rounded-lg">
+            <h3 className="text-xl font-bold text-blue-600">{cls.name}</h3>
+            <p className="text-sm text-gray-600 mb-2">{cls.level}</p>
+            <div className="mt-3">
+              <label className="text-sm font-semibold text-gray-700">Enseignant:</label>
+              <select
+                value={cls.teacher_id || ''}
+                onChange={(e) => onUpdateTeacher(cls.id, parseInt(e.target.value) || null)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="">Non assigné</option>
+                {accounts.filter(a => a.role === 'teacher').map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                ))}
+              </select>
+            </div>
+            <p className="text-sm text-gray-500 mt-2">
+              {students.filter(s => s.class_id === cls.id).length} élève(s)
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StudentsTab({ students, classes, showForm, setShowForm, onAdd }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Gestion des élèves</h2>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <Plus className="w-4 h-4" />
+          Ajouter un élève
+        </button>
+      </div>
+      
+      {showForm && <StudentForm onSubmit={onAdd} onCancel={() => setShowForm(false)} classes={classes} />}
+      
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-4 py-2 text-left">Nom</th>
+              <th className="px-4 py-2 text-left">Prénom</th>
+              <th className="px-4 py-2 text-left">Classe</th>
+              <th className="px-4 py-2 text-left">Date de naissance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {students.map(student => (
+              <tr key={student.id} className="border-b hover:bg-gray-50">
+                <td className="px-4 py-3">{student.last_name}</td>
+                <td className="px-4 py-3">{student.first_name}</td>
+                <td className="px-4 py-3">{classes.find(c => c.id === student.class_id)?.name}</td>
+                <td className="px-4 py-3">{student.birth_date}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function MessagesTab({ messages, classes, currentUser, showForm, setShowForm, onSend }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Messages</h2>
+        {currentUser.role === 'admin' && (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Plus className="w-4 h-4" />
+            Nouveau message
+          </button>
+        )}
+      </div>
+      
+      {showForm && <MessageForm onSubmit={onSend} onCancel={() => setShowForm(false)} classes={classes} />}
+      
+      <div className="space-y-3">
+        {messages.map(msg => {
+          const Icon = msg.category === 'sortie' ? Calendar : msg.category === 'information' ? Info : Megaphone;
+          const bgColor = msg.category === 'sortie' ? 'bg-green-50 border-green-300' : msg.category === 'information' ? 'bg-blue-50 border-blue-300' : 'bg-orange-50 border-orange-300';
+          
+          return (
+            <div key={msg.id} className={`p-4 border-l-4 rounded ${bgColor}`}>
+              <div className="flex items-start gap-3">
+                <Icon className="w-5 h-5 mt-1" />
+                <div className="flex-1">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-bold">{msg.title}</h3>
+                    <span className="text-xs text-gray-500">{new Date(msg.date).toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 mt-1">{msg.content}</p>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Classe: {classes.find(c => c.id === msg.class_id)?.name} • Par: {msg.sender}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AlertsAdminTab({ alerts, showForm, setShowForm, onCreate, onDelete }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Gestion des alertes</h2>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+          <Plus className="w-4 h-4" />
+          Créer une alerte
+        </button>
+      </div>
+      
+      {showForm && <AlertForm onSubmit={onCreate} onCancel={() => setShowForm(false)} />}
+      
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+        <p className="text-sm text-gray-700">
+          <strong>Info:</strong> Ces alertes seront visibles par tous les enseignants sur leur tableau de bord.
+        </p>
+      </div>
+      
+      <div className="space-y-3">
+        {alerts.map(alert => (
+          <div key={alert.id} className="p-4 bg-red-50 border-l-4 border-red-500 rounded">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 mt-1" />
+              <div className="flex-1">
+                <div className="flex justify-between items-start">
+                  <h3 className="font-bold text-red-800">{alert.title}</h3>
+                  <button onClick={() => onDelete(alert.id)} className="text-red-600 hover:text-red-800">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-700 mt-1">{alert.description}</p>
+                <p className="text-xs text-gray-500 mt-2">Par {alert.created_by} - {new Date(alert.date).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AlertsTeacherTab({ alerts }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Alertes de l'administration</h2>
+      {alerts.length === 0 ? (
+        <p className="text-gray-500">Aucune alerte pour le moment</p>
+      ) : (
+        <div className="space-y-3">
+          {alerts.map(alert => (
+            <div key={alert.id} className="p-4 bg-red-50 border-l-4 border-red-500 rounded">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-500 mt-1" />
+                <div className="flex-1">
+                  <h3 className="font-bold text-red-800">{alert.title}</h3>
+                  <p className="text-sm text-gray-700 mt-1">{alert.description}</p>
+                  <p className="text-xs text-gray-500 mt-2">Par {alert.created_by} - {new Date(alert.date).toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AttendanceTab({ classes, students, showForm, setShowForm, onSubmit }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Faire l'appel</h2>
+      <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 mb-4">
+        <ClipboardCheck className="w-4 h-4" />
+        Commencer l'appel
+      </button>
+      {showForm && <AttendanceForm onSubmit={onSubmit} onCancel={() => setShowForm(false)} classes={classes} students={students} />}
+    </div>
+  );
+}
+
+function AttendanceViewTab({ attendance }) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Appels reçus</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="px-4 py-2 text-left">Nom de l'élève</th>
+              <th className="px-4 py-2 text-left">Classe</th>
+              <th className="px-4 py-2 text-left">Statut</th>
+              <th className="px-4 py-2 text-left">Raison</th>
+              <th className="px-4 py-2 text-left">Date</th>
+              <th className="px-4 py-2 text-left">Enseignant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {attendance.map(att => (
+              <tr key={att.id} className="border-b hover:bg-gray-50">
+                <td className="px-4 py-3">{att.student_name}</td>
+                <td className="px-4 py-3">{att.class_name}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${att.present ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {att.present ? 'Présent' : 'Absent'}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{att.reason || '-'}</td>
+                <td className="px-4 py-3">{att.date}</td>
+                <td className="px-4 py-3">{att.teacher_name}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function HomeworkTab({ homework, classes, currentUser, teacherClass, showForm, setShowForm, editingHomework, setEditingHomework, onAdd, onEdit, onDelete }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Cahier de texte</h2>
+        {currentUser.role === 'teacher' && teacherClass && (
+          <button onClick={() => { setEditingHomework(null); setShowForm(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Plus className="w-4 h-4" />
+            Ajouter un devoir
+          </button>
+        )}
+      </div>
+      
+      {showForm && <HomeworkForm onSubmit={onAdd} onCancel={() => { setShowForm(false); setEditingHomework(null); }} teacherClass={teacherClass} initialData={editingHomework} />}
+      
+      <div className="space-y-4">
+        {homework.map(hw => {
+          const hwClass = classes.find(c => c.id === hw.class_id);
+          return (
+            <div key={hw.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="font-bold text-lg">{hw.subject}</h3>
+                  <p className="text-sm text-gray-600">Classe: {hwClass?.name}</p>
+                </div>
+                <div className="flex gap-2">
+                  {currentUser.role === 'admin' && (
+                    <>
+                      <button onClick={() => onEdit(hw)} className="p-2 text-blue-600 hover:bg-blue-100 rounded">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => onDelete(hw.id)} className="p-2 text-red-600 hover:bg-red-100 rounded">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <p className="text-gray-700 mb-2">{hw.description}</p>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-500">Pour le: {hw.due_date}</span>
+                <span className="text-gray-500">Par {hw.teacher_name}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleTab({ schedules, classes, currentUser, teacherClass, showEditor, setShowEditor, editingSchedule, setEditingSchedule, onAdd, onDelete, onDuplicate }) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">
+          Emploi du temps
+          {currentUser.role === 'teacher' && teacherClass && ` - ${teacherClass.name}`}
+        </h2>
+        {currentUser.role === 'admin' && (
+          <button onClick={() => { setEditingSchedule(null); setShowEditor(true); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <Plus className="w-4 h-4" />
+            Ajouter
+          </button>
+        )}
+      </div>
+      
+      {showEditor && <ScheduleEditor onSubmit={onAdd} onCancel={() => { setShowEditor(false); setEditingSchedule(null); }} classes={classes} initialData={editingSchedule} />}
+      
+      <ScheduleView 
+        schedules={schedules}
+        onEdit={currentUser.role === 'admin' ? (item) => { setEditingSchedule(item); setShowEditor(true); } : null}
+        onDelete={currentUser.role === 'admin' ? onDelete : null}
+        onDuplicate={currentUser.role === 'admin' ? onDuplicate : null}
+      />
+    </div>
+  );
+}
+
+// Forms
+function AccountForm({ onSubmit, onCancel }) {
+  const [form, setForm] = useState({ name: '', username: '', password: '' });
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">Créer un compte enseignant</h3>
+      <div className="space-y-3">
+        <input type="text" placeholder="Nom complet" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <input type="text" placeholder="Nom d'utilisateur" value={form.username} onChange={(e) => setForm({...form, username: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <input type="password" placeholder="Mot de passe" value={form.password} onChange={(e) => setForm({...form, password: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{initialData ? 'Modifier' : 'Ajouter'}</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleEditor({ onSubmit, onCancel, classes, initialData }) {
+  const [form, setForm] = useState(initialData || { class_id: '', day: '', start_time: '', end_time: '', subject: '', color: '#3b82f6' });
+  const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+  
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">{initialData ? 'Modifier' : 'Ajouter'} un cours</h3>
+      <div className="space-y-3">
+        <select value={form.class_id} onChange={(e) => setForm({...form, class_id: parseInt(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Classe</option>
+          {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+        </select>
+        <select value={form.day} onChange={(e) => setForm({...form, day: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Jour</option>
+          {days.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <div className="grid grid-cols-2 gap-2">
+          <input type="time" value={form.start_time} onChange={(e) => setForm({...form, start_time: e.target.value})} className="px-3 py-2 border border-gray-300 rounded-lg" />
+          <input type="time" value={form.end_time} onChange={(e) => setForm({...form, end_time: e.target.value})} className="px-3 py-2 border border-gray-300 rounded-lg" />
+        </div>
+        <input type="text" placeholder="Matière" value={form.subject} onChange={(e) => setForm({...form, subject: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <div>
+          <label className="text-sm font-semibold">Couleur:</label>
+          <div className="flex gap-2 mt-2">
+            {colors.map(c => <button key={c} onClick={() => setForm({...form, color: c})} className={`w-10 h-10 rounded-lg ${form.color === c ? 'ring-2 ring-black' : ''}`} style={{backgroundColor: c}} />)}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">{initialData ? 'Modifier' : 'Ajouter'}</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleView({ schedules, onEdit, onDelete, onDuplicate }) {
+  const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+  
+  return (
+    <div className="overflow-x-auto">
+      <div className="grid grid-cols-5 gap-4 min-w-max">
+        {days.map(day => (
+          <div key={day} className="min-w-48">
+            <h3 className="font-bold text-center p-3 bg-gray-200 rounded-t-lg">{day}</h3>
+            <div className="space-y-2 p-2 bg-gray-50 rounded-b-lg min-h-96">
+              {schedules.filter(s => s.day === day).sort((a,b) => a.start_time.localeCompare(b.start_time)).map(item => (
+                <div key={item.id} className="p-3 rounded-lg text-white relative group" style={{backgroundColor: item.color}}>
+                  <p className="font-semibold text-sm">{item.subject}</p>
+                  <p className="text-xs">{item.start_time} - {item.end_time}</p>
+                  {(onEdit || onDelete || onDuplicate) && (
+                    <div className="absolute top-1 right-1 hidden group-hover:flex gap-1">
+                      {onDuplicate && <button onClick={() => onDuplicate(item)} className="p-1 bg-white/20 hover:bg-white/40 rounded"><Copy className="w-3 h-3" /></button>}
+                      {onEdit && <button onClick={() => onEdit(item)} className="p-1 bg-white/20 hover:bg-white/40 rounded"><Edit className="w-3 h-3" /></button>}
+                      {onDelete && <button onClick={() => onDelete(item.id)} className="p-1 bg-white/20 hover:bg-white/40 rounded"><Trash2 className="w-3 h-3" /></button>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+} bg-blue-600 text-white rounded-lg hover:bg-blue-700">Créer</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClassForm({ onSubmit, onCancel }) {
+  const [form, setForm] = useState({ name: '', level: '' });
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">Créer une classe</h3>
+      <div className="space-y-3">
+        <input type="text" placeholder="Nom (ex: CM1-A)" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <select value={form.level} onChange={(e) => setForm({...form, level: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Niveau</option>
+          <option value="Maternelle">Maternelle</option>
+          <option value="CP">CP</option>
+          <option value="CE1">CE1</option>
+          <option value="CE2">CE2</option>
+          <option value="CM1">CM1</option>
+          <option value="CM2">CM2</option>
+        </select>
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Créer</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StudentForm({ onSubmit, onCancel, classes }) {
+  const [form, setForm] = useState({ first_name: '', last_name: '', birth_date: '', class_id: '' });
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">Ajouter un élève</h3>
+      <div className="space-y-3">
+        <input type="text" placeholder="Prénom" value={form.first_name} onChange={(e) => setForm({...form, first_name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <input type="text" placeholder="Nom" value={form.last_name} onChange={(e) => setForm({...form, last_name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <input type="date" value={form.birth_date} onChange={(e) => setForm({...form, birth_date: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <select value={form.class_id} onChange={(e) => setForm({...form, class_id: parseInt(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Classe</option>
+          {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+        </select>
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Ajouter</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageForm({ onSubmit, onCancel, classes }) {
+  const [form, setForm] = useState({ title: '', content: '', class_id: '', category: 'information' });
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">Nouveau message</h3>
+      <div className="space-y-3">
+        <input type="text" placeholder="Titre" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <textarea placeholder="Contenu" value={form.content} onChange={(e) => setForm({...form, content: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg h-24" />
+        <select value={form.class_id} onChange={(e) => setForm({...form, class_id: parseInt(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Classe</option>
+          {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+        </select>
+        <select value={form.category} onChange={(e) => setForm({...form, category: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="information">Information</option>
+          <option value="sortie">Sortie</option>
+          <option value="annonce">Annonce</option>
+        </select>
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Envoyer</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertForm({ onSubmit, onCancel }) {
+  const [form, setForm] = useState({ title: '', description: '' });
+  const alerts = ['Alerte intrusion', 'Exercice incendie', 'Évacuation', 'Confinement', 'Incident', 'Autre'];
+  return (
+    <div className="mb-6 p-4 bg-red-50 rounded-lg">
+      <h3 className="font-bold mb-4">Créer une alerte</h3>
+      <div className="space-y-3">
+        <select value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Type</option>
+          {alerts.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        {form.title === 'Autre' && <input type="text" placeholder="Titre" onChange={(e) => setForm({...form, title: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />}
+        <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg h-24" />
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Créer</button>
+          <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceForm({ onSubmit, onCancel, classes, students }) {
+  const [selectedClass, setSelectedClass] = useState('');
+  const [presentStudents, setPresentStudents] = useState([]);
+  const classStudents = selectedClass ? students.filter(s => s.class_id === parseInt(selectedClass)) : [];
+  
+  const toggleStudent = (id) => {
+    setPresentStudents(presentStudents.includes(id) ? presentStudents.filter(sid => sid !== id) : [...presentStudents, id]);
+  };
+  
+  return (
+    <div className="mb-6 p-4 bg-green-50 rounded-lg">
+      <h3 className="font-bold mb-4">Faire l'appel</h3>
+      <div className="space-y-4">
+        <select value={selectedClass} onChange={(e) => { setSelectedClass(e.target.value); setPresentStudents([]); }} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+          <option value="">Classe</option>
+          {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+        </select>
+        {selectedClass && (
+          <>
+            <div className="bg-white p-4 rounded-lg">
+              <p className="text-sm text-gray-600 mb-3">Cliquez sur les présents :</p>
+              <div className="space-y-2">
+                {classStudents.map(student => (
+                  <button key={student.id} onClick={() => toggleStudent(student.id)} className={`w-full p-3 rounded-lg text-left transition ${presentStudents.includes(student.id) ? 'bg-green-500 text-white font-semibold' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                    {student.first_name} {student.last_name} {presentStudents.includes(student.id) && '✓'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => onSubmit(selectedClass, presentStudents)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Valider</button>
+              <button onClick={onCancel} className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400">Annuler</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HomeworkForm({ onSubmit, onCancel, teacherClass, initialData }) {
+  const [form, setForm] = useState(initialData || { subject: '', description: '', due_date: '', class_id: teacherClass?.id });
+  return (
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="font-bold mb-4">{initialData ? 'Modifier' : 'Ajouter'} un devoir</h3>
+      <div className="space-y-3">
+        <input type="text" placeholder="Matière" value={form.subject} onChange={(e) => setForm({...form, subject: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <textarea placeholder="Description" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg h-24" />
+        <input type="date" value={form.due_date} onChange={(e) => setForm({...form, due_date: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <div className="flex gap-2">
+          <button onClick={() => onSubmit(form)} className="px-4 py-2
