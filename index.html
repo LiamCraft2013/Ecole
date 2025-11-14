@@ -1,528 +1,511 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestion Scolaire</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-    </style>
 </head>
 <body class="bg-gray-100">
     <div id="app"></div>
 
     <script>
-        // Config Supabase
         const SUPABASE_URL = 'https://hsercitkdpjgftcnctze.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZXJjaXRrZHBqZ2Z0Y25jdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODY0ODcsImV4cCI6MjA3ODQ2MjQ4N30.LY66K60q4NXV4A_MzVWL9Dd5rhov9ihFUUvbfDFsPSI';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZXJjaXRrZHBqZ2Z0Y25jdHplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI4ODY0ODcsImV4cCI6MjA3ODQ2MjQ4N30.LY66K60q4NXV4A_MzVWL9Dd5rhov9ihFUUvbfDFsPSI';
 
-        // Minimal client REST wrapper (utilise fetch)
         const supabase = {
             from: (table) => ({
-                select: async (columns = '*') => {
-                    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${columns}`, {
-                        headers: {
-                            'apikey': SUPABASE_ANON_KEY,
-                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                        }
+                select: async () => {
+                    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, {
+                        headers: {'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`}
                     });
-                    return { data: await res.json(), error: res.ok ? null : 'Error' };
+                    return {data: await res.json()};
                 },
                 insert: async (data) => {
                     const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
                         method: 'POST',
-                        headers: {
-                            'apikey': SUPABASE_ANON_KEY,
-                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'return=representation'
-                        },
+                        headers: {'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation'},
                         body: JSON.stringify(data)
                     });
-                    return { data: await res.json(), error: res.ok ? null : 'Error' };
+                    return {data: await res.json()};
                 },
                 update: async (data) => ({
-                    eq: async (column, value) => {
-                        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
+                    eq: async (col, val) => {
+                        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, {
                             method: 'PATCH',
-                            headers: {
-                                'apikey': SUPABASE_ANON_KEY,
-                                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-                                'Content-Type': 'application/json',
-                                'Prefer': 'return=representation'
-                            },
+                            headers: {'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation'},
                             body: JSON.stringify(data)
                         });
-                        return { data: await res.json(), error: res.ok ? null : 'Error' };
+                        return {data: await res.json()};
                     }
                 }),
                 delete: async () => ({
-                    eq: async (column, value) => {
-                        const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${column}=eq.${value}`, {
+                    eq: async (col, val) => {
+                        await fetch(`${SUPABASE_URL}/rest/v1/${table}?${col}=eq.${val}`, {
                             method: 'DELETE',
-                            headers: {
-                                'apikey': SUPABASE_ANON_KEY,
-                                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                            }
+                            headers: {'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`}
                         });
-                        return { error: res.ok ? null : 'Error' };
+                        return {};
                     }
                 })
             })
         };
 
-        // Etat global
-        let state = {
-            currentUser: null,
-            activeTab: 'dashboard',
-            accounts: [],
-            classes: [],
-            students: [],
-            messages: [],
-            alerts: [],
-            attendance: [],
-            homework: [],
-            schedules: [],
-            loading: true
+        let S = {
+            user: null, tab: 'dashboard', loading: true,
+            accounts: [], classes: [], students: [], messages: [], alerts: [], attendance: [], homework: [], schedules: [],
+            showForm: null, editData: null
         };
 
-        // Chargement initial des données
-        async function loadData() {
-            state.loading = true;
+        async function init() {
+            S.loading = true;
             render();
-            try {
-                const [acc, cls, stu, msg, alt, att, hmw, sch] = await Promise.all([
-                    supabase.from('accounts').select(),
-                    supabase.from('classes').select(),
-                    supabase.from('students').select(),
-                    supabase.from('messages').select(),
-                    supabase.from('alerts').select(),
-                    supabase.from('attendance').select(),
-                    supabase.from('homework').select(),
-                    supabase.from('schedules').select()
-                ]);
-
-                state.accounts = acc.data || [];
-                state.classes = cls.data || [];
-                state.students = stu.data || [];
-                state.messages = msg.data || [];
-                state.alerts = alt.data || [];
-                state.attendance = att.data || [];
-                state.homework = hmw.data || [];
-                state.schedules = sch.data || [];
-            } catch (e) {
-                console.error('Erreur loadData:', e);
-            }
-            state.loading = false;
+            const [a,c,s,m,al,at,h,sc] = await Promise.all([
+                supabase.from('accounts').select(),
+                supabase.from('classes').select(),
+                supabase.from('students').select(),
+                supabase.from('messages').select(),
+                supabase.from('alerts').select(),
+                supabase.from('attendance').select(),
+                supabase.from('homework').select(),
+                supabase.from('schedules').select()
+            ]);
+            S.accounts = a.data || []; S.classes = c.data || []; S.students = s.data || [];
+            S.messages = m.data || []; S.alerts = al.data || []; S.attendance = at.data || [];
+            S.homework = h.data || []; S.schedules = sc.data || [];
+            S.loading = false;
             render();
         }
 
-        // Auth locale basique (demo)
-        function handleLogin(username, password) {
-            const user = state.accounts.find(a => a.username === username && a.password === password);
-            if (user) {
-                state.currentUser = user;
-                state.activeTab = 'dashboard';
-                render();
-            } else {
-                alert('Identifiants incorrects');
-            }
-        }
-
-        function handleLogout() {
-            state.currentUser = null;
-            state.activeTab = 'dashboard';
-            render();
-        }
-
-        // UI helpers
-        function tabClass(tab) {
-            return `px-4 py-2 rounded-lg font-semibold ${state.activeTab === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`;
-        }
-
-        // Rendu principal
         function render() {
             const app = document.getElementById('app');
-            if (state.loading) {
-                app.innerHTML = `<div class="min-h-screen flex items-center justify-center text-white text-2xl bg-gradient-to-br from-blue-600 to-purple-700">Chargement...</div>`;
+            if (S.loading) {
+                app.innerHTML = '<div class="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center"><div class="text-white text-2xl">Chargement...</div></div>';
                 return;
             }
-
-            if (!state.currentUser) {
+            if (!S.user) {
                 app.innerHTML = `
                     <div class="min-h-screen bg-gradient-to-br from-blue-600 to-purple-700 flex items-center justify-center p-4">
                         <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+                            <div class="text-6xl text-center mb-4">🏫</div>
                             <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Connexion</h1>
-                            <div class="space-y-4">
-                                <input type="text" id="username" placeholder="Nom d'utilisateur" class="w-full px-4 py-3 border rounded-lg">
-                                <input type="password" id="password" placeholder="Mot de passe" class="w-full px-4 py-3 border rounded-lg">
-                                <div class="flex gap-2">
-                                    <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg">Se connecter</button>
-                                    <button onclick="demoAdmin()" class="w-36 bg-gray-200 hover:bg-gray-300 rounded-lg">Demo admin</button>
-                                </div>
-                            </div>
+                            <input type="text" id="u" placeholder="Nom d'utilisateur" class="w-full px-4 py-3 mb-4 border rounded-lg">
+                            <input type="password" id="p" placeholder="Mot de passe" class="w-full px-4 py-3 mb-4 border rounded-lg" onkeypress="if(event.key==='Enter')login()">
+                            <button onclick="login()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg">Se connecter</button>
+                            <p class="text-sm text-gray-500 text-center mt-4">Supabase ✓</p>
                         </div>
                     </div>
                 `;
                 return;
             }
 
-            // Header + nav
+            const isAdmin = S.user.role === 'admin';
+            const tc = S.classes.find(c => c.teacher_id === S.user.id);
+
             app.innerHTML = `
-                <div class="min-h-screen bg-gray-100">
-                    <div class="bg-white shadow-md">
-                        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-                            <div class="flex items-center gap-3">
-                                <h1 class="text-2xl font-bold text-gray-800">Gestion Scolaire</h1>
-                                <p class="text-sm text-gray-600">${state.currentUser.name} • ${state.currentUser.role}</p>
-                            </div>
-                            <div class="flex items-center gap-4">
-                                ${state.currentUser.role === 'admin' ? `<button onclick="changeTab('accounts')" class="${tabClass('accounts')}">👥 Comptes</button>` : ''}
-                                <button onclick="handleLogout()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Déconnexion</button>
+                <div class="bg-white shadow-md">
+                    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <div class="text-3xl">🏫</div>
+                            <div>
+                                <h1 class="text-2xl font-bold">Gestion Scolaire</h1>
+                                <p class="text-sm text-gray-600">${S.user.name} - ${isAdmin ? 'Admin' : 'Enseignant'}</p>
                             </div>
                         </div>
+                        <button onclick="logout()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">Déconnexion</button>
                     </div>
-
-                    <div class="max-w-7xl mx-auto px-4 py-6">
-                        <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
-                            <button onclick="changeTab('dashboard')" class="${tabClass('dashboard')}">📊 Tableau de bord</button>
-                            ${state.currentUser.role === 'admin' ? `
-                                <button onclick="changeTab('alerts')" class="${tabClass('alerts')}">🚨 Alertes</button>
-                                <button onclick="changeTab('messages')" class="${tabClass('messages')}">💬 Messages</button>
-                                <button onclick="changeTab('accounts')" class="${tabClass('accounts')}">👥 Comptes</button>
-                            ` : `
-                                <button onclick="changeTab('attendance')" class="${tabClass('attendance')}">✓ Faire l'appel</button>
-                                <button onclick="changeTab('schedule')" class="${tabClass('schedule')}">🕐 Emploi du temps</button>
-                                <button onclick="changeTab('homework')" class="${tabClass('homework')}">📚 Cahier de texte</button>
-                            `}
-                        </div>
-
-                        <div class="bg-white rounded-xl shadow-lg p-6" id="content">${renderContent()}</div>
+                </div>
+                <div class="max-w-7xl mx-auto px-4 py-6">
+                    <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+                        ${btn('dashboard', '📊 Tableau')}
+                        ${isAdmin ? `
+                            ${btn('accounts', '👥 Comptes')}
+                            ${btn('classes', '🏫 Classes')}
+                            ${btn('students', '🎓 Élèves')}
+                            ${btn('attendance-view', '✓ Appels')}
+                            ${btn('alerts', '🚨 Alertes')}
+                        ` : `
+                            ${btn('alerts', '🚨 Alertes')}
+                            ${btn('attendance', '✓ Appel')}
+                            ${btn('schedule', '🕐 Emploi')}
+                        `}
+                        ${btn('messages', '💬 Messages')}
+                        ${btn('homework', '📚 Devoirs')}
                     </div>
+                    <div class="bg-white rounded-xl shadow-lg p-6">${getContent()}</div>
                 </div>
             `;
         }
 
-        // Rendu contenu selon onglet
-        function renderContent() {
-            if (state.activeTab === 'dashboard') {
+        function btn(t, l) {
+            return `<button onclick="tab('${t}')" class="px-4 py-2 rounded-lg font-semibold whitespace-nowrap ${S.tab===t?'bg-blue-600 text-white':'bg-white text-gray-700 hover:bg-gray-100'}">${l}</button>`;
+        }
+
+        function getContent() {
+            const isAdmin = S.user.role === 'admin';
+            const tc = S.classes.find(c => c.teacher_id === S.user.id);
+
+            if (S.tab === 'dashboard') {
                 return `
                     <h2 class="text-2xl font-bold mb-6">Tableau de bord</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div class="bg-blue-100 p-6 rounded-lg"><div class="text-4xl mb-2">🎓</div><h3 class="text-3xl font-bold">${state.students.length}</h3><p>Élèves</p></div>
-                        <div class="bg-green-100 p-6 rounded-lg"><div class="text-4xl mb-2">🏫</div><h3 class="text-3xl font-bold">${state.classes.length}</h3><p>Classes</p></div>
-                        <div class="bg-purple-100 p-6 rounded-lg"><div class="text-4xl mb-2">💬</div><h3 class="text-3xl font-bold">${state.messages.length}</h3><p>Messages</p></div>
+                    <div class="grid grid-cols-3 gap-4 mb-6">
+                        <div class="bg-blue-100 p-6 rounded-lg text-center"><div class="text-4xl mb-2">👥</div><h3 class="text-3xl font-bold text-blue-600">${S.students.length}</h3><p>Élèves</p></div>
+                        <div class="bg-green-100 p-6 rounded-lg text-center"><div class="text-4xl mb-2">🏫</div><h3 class="text-3xl font-bold text-green-600">${S.classes.length}</h3><p>Classes</p></div>
+                        <div class="bg-purple-100 p-6 rounded-lg text-center"><div class="text-4xl mb-2">💬</div><h3 class="text-3xl font-bold text-purple-600">${S.messages.length}</h3><p>Messages</p></div>
                     </div>
-                `;
-            }
-
-            if (state.activeTab === 'accounts') {
-                // Gestion des comptes (admin)
-                return `
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">Gestion des comptes</h2>
-                        <div class="flex gap-2">
-                            <button onclick="showAccountForm(null)" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">➕ Créer un compte</button>
-                            <button onclick="refreshAccounts()" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">⟳ Rafraîchir</button>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-gray-100">
-                                    <th class="p-2">ID</th>
-                                    <th class="p-2">Nom</th>
-                                    <th class="p-2">Username</th>
-                                    <th class="p-2">Role</th>
-                                    <th class="p-2">Classe</th>
-                                    <th class="p-2">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${state.accounts.map(a => `
-                                    <tr class="border-b hover:bg-gray-50">
-                                        <td class="p-2">${a.id ?? '-'}</td>
-                                        <td class="p-2">${a.name ?? '-'}</td>
-                                        <td class="p-2">${a.username ?? '-'}</td>
-                                        <td class="p-2">${a.role ?? '-'}</td>
-                                        <td class="p-2">${state.classes.find(c => c.id === a.class_id)?.name || '-'}</td>
-                                        <td class="p-2">
-                                            <button onclick="showAccountForm(${a.id})" class="px-2 py-1 bg-blue-600 text-white rounded mr-2">✏️</button>
-                                            <button onclick="deleteAccount(${a.id})" class="px-2 py-1 bg-red-500 text-white rounded">🗑️</button>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
-            }
-
-            if (state.activeTab === 'attendance') {
-                const teacherClass = state.classes.find(c => c.teacher_id === state.currentUser.id);
-                if (!teacherClass) return '<p class="text-gray-500">Aucune classe assignée pour faire l’appel.</p>';
-                const students = state.students.filter(s => s.class_id === teacherClass.id);
-                return `
-                    <h2 class="text-2xl font-bold mb-6">Faire l'appel - ${teacherClass.name}</h2>
-                    ${students.map(s => `
-                        <div class="flex justify-between items-center bg-gray-50 p-4 rounded-lg border mb-2">
-                            <div><p class="font-semibold">${s.name}</p></div>
-                            <div class="flex gap-2">
-                                <button onclick="markAttendance(${s.id}, true)" class="px-3 py-1 bg-green-500 text-white rounded">Présent</button>
-                                <button onclick="markAttendance(${s.id}, false)" class="px-3 py-1 bg-red-500 text-white rounded">Absent</button>
+                    ${!isAdmin && S.alerts.length > 0 ? `
+                        <h3 class="text-xl font-bold mb-4">🚨 Alertes importantes</h3>
+                        ${S.alerts.slice(-5).reverse().map(a => `
+                            <div class="p-4 bg-red-50 border-l-4 border-red-500 rounded mb-2">
+                                <p class="font-bold text-red-800">${a.title}</p>
+                                <p class="text-sm">${a.description}</p>
+                                <p class="text-xs text-gray-500 mt-1">Par ${a.created_by} - ${new Date(a.date).toLocaleString()}</p>
                             </div>
+                        `).join('')}
+                    ` : ''}
+                `;
+            }
+
+            if (S.tab === 'accounts' && isAdmin) {
+                return `
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Comptes</h2>
+                        <button onclick="showForm('account')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Créer</button>
+                    </div>
+                    ${S.showForm === 'account' ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                            <input type="text" id="name" placeholder="Nom complet" class="w-full px-3 py-2 mb-2 border rounded">
+                            <input type="text" id="username" placeholder="Username" class="w-full px-3 py-2 mb-2 border rounded">
+                            <input type="password" id="password" placeholder="Password" class="w-full px-3 py-2 mb-2 border rounded">
+                            <button onclick="createAccount()" class="px-4 py-2 bg-blue-600 text-white rounded mr-2">Créer</button>
+                            <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                        </div>
+                    ` : ''}
+                    ${S.accounts.filter(a => a.role !== 'admin').map(a => `
+                        <div class="flex justify-between items-center p-4 bg-gray-50 rounded mb-2">
+                            <div><p class="font-bold">${a.name}</p><p class="text-sm text-gray-600">@${a.username}</p></div>
+                            <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Enseignant</span>
                         </div>
                     `).join('')}
                 `;
             }
 
-            if (state.activeTab === 'schedule') {
-                const userSchedule = state.currentUser.role === 'teacher' ? state.schedules.filter(s => s.teacher_id === state.currentUser.id) : state.schedules;
-                if (userSchedule.length === 0) return '<p class="text-gray-500">Aucun emploi du temps disponible.</p>';
+            if (S.tab === 'classes' && isAdmin) {
                 return `
-                    <h2 class="text-2xl font-bold mb-6">Emploi du temps</h2>
-                    <table class="w-full border-collapse">
-                        <thead><tr class="bg-blue-600 text-white"><th class="p-2">Jour</th><th class="p-2">Heure</th><th class="p-2">Matière</th><th class="p-2">Classe</th><th class="p-2">Salle</th></tr></thead>
-                        <tbody>
-                            ${userSchedule.map(sc => `
-                                <tr class="border-b hover:bg-gray-50">
-                                    <td class="p-2">${sc.day}</td>
-                                    <td class="p-2">${sc.hour}</td>
-                                    <td class="p-2">${sc.subject}</td>
-                                    <td class="p-2">${state.classes.find(c => c.id === sc.class_id)?.name || '-'}</td>
-                                    <td class="p-2">${sc.room}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            }
-
-            if (state.activeTab === 'homework') {
-                const userHomework = state.currentUser.role === 'teacher'
-                    ? state.homework.filter(h => {
-                        const teacherClass = state.classes.find(c => c.teacher_id === state.currentUser.id);
-                        return teacherClass && h.class_id === teacherClass.id;
-                    })
-                    : state.homework;
-                return `
-                    <h2 class="text-2xl font-bold mb-6">Cahier de texte</h2>
-                    <div class="space-y-3">
-                        ${userHomework.map(hw => `
-                            <div class="p-4 bg-gray-50 rounded-lg border">
-                                <h3 class="font-bold">${hw.subject}</h3>
-                                <p class="text-sm text-gray-700">${hw.description}</p>
-                                <p class="text-xs text-gray-500">Pour le ${hw.due_date} - ${hw.teacher_name}</p>
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Classes</h2>
+                        <button onclick="showForm('class')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Créer</button>
+                    </div>
+                    ${S.showForm === 'class' ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                            <input type="text" id="cname" placeholder="Nom classe" class="w-full px-3 py-2 mb-2 border rounded">
+                            <select id="level" class="w-full px-3 py-2 mb-2 border rounded">
+                                <option value="">Niveau</option>
+                                <option>Maternelle</option><option>CP</option><option>CE1</option><option>CE2</option><option>CM1</option><option>CM2</option>
+                            </select>
+                            <button onclick="createClass()" class="px-4 py-2 bg-blue-600 text-white rounded mr-2">Créer</button>
+                            <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                        </div>
+                    ` : ''}
+                    <div class="grid grid-cols-2 gap-4">
+                        ${S.classes.map(c => `
+                            <div class="p-4 bg-gray-50 rounded">
+                                <h3 class="text-xl font-bold text-blue-600">${c.name}</h3>
+                                <p class="text-sm text-gray-600 mb-2">${c.level}</p>
+                                <select onchange="updateTeacher(${c.id}, this.value)" class="w-full px-3 py-2 border rounded">
+                                    <option value="">Non assigné</option>
+                                    ${S.accounts.filter(a => a.role === 'teacher').map(t => `<option value="${t.id}" ${c.teacher_id === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                                </select>
+                                <p class="text-sm text-gray-500 mt-2">${S.students.filter(s => s.class_id === c.id).length} élève(s)</p>
                             </div>
                         `).join('')}
                     </div>
                 `;
             }
 
-            if (state.activeTab === 'alerts') {
+            if (S.tab === 'students' && isAdmin) {
                 return `
-                    <h2 class="text-2xl font-bold mb-6">Alertes</h2>
-                    ${state.alerts.map(alert => `
-                        <div class="p-4 bg-red-50 border-l-4 border-red-500 rounded mb-3">
-                            <h3 class="font-bold text-red-700">${alert.title}</h3>
-                            <p>${alert.description}</p>
-                            <p class="text-xs text-gray-500">${new Date(alert.date).toLocaleString()}</p>
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Élèves</h2>
+                        <button onclick="showForm('student')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Ajouter</button>
+                    </div>
+                    ${S.showForm === 'student' ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                            <input type="text" id="fname" placeholder="Prénom" class="w-full px-3 py-2 mb-2 border rounded">
+                            <input type="text" id="lname" placeholder="Nom" class="w-full px-3 py-2 mb-2 border rounded">
+                            <input type="date" id="bdate" class="w-full px-3 py-2 mb-2 border rounded">
+                            <select id="scid" class="w-full px-3 py-2 mb-2 border rounded">
+                                <option value="">Classe</option>
+                                ${S.classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                            </select>
+                            <button onclick="addStudent()" class="px-4 py-2 bg-blue-600 text-white rounded mr-2">Ajouter</button>
+                            <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                        </div>
+                    ` : ''}
+                    <table class="w-full"><thead class="bg-gray-100"><tr><th class="px-4 py-2 text-left">Nom</th><th class="px-4 py-2 text-left">Prénom</th><th class="px-4 py-2 text-left">Classe</th><th class="px-4 py-2 text-left">Né(e) le</th></tr></thead>
+                    <tbody>${S.students.map(s => `<tr class="border-b"><td class="px-4 py-3">${s.last_name}</td><td class="px-4 py-3">${s.first_name}</td><td class="px-4 py-3">${S.classes.find(c=>c.id===s.class_id)?.name||''}</td><td class="px-4 py-3">${s.birth_date}</td></tr>`).join('')}</tbody></table>
+                `;
+            }
+
+            if (S.tab === 'alerts') {
+                if (isAdmin) {
+                    return `
+                        <div class="flex justify-between mb-6">
+                            <h2 class="text-2xl font-bold">Alertes</h2>
+                            <button onclick="showForm('alert')" class="px-4 py-2 bg-red-600 text-white rounded-lg">➕ Créer</button>
+                        </div>
+                        ${S.showForm === 'alert' ? `
+                            <div class="mb-6 p-4 bg-red-50 rounded-lg">
+                                <select id="atitle" class="w-full px-3 py-2 mb-2 border rounded">
+                                    <option value="">Type</option>
+                                    <option>Alerte intrusion</option><option>Exercice incendie</option><option>Évacuation</option><option>Confinement</option><option>Incident</option>
+                                </select>
+                                <textarea id="adesc" placeholder="Description" class="w-full px-3 py-2 mb-2 border rounded h-24"></textarea>
+                                <button onclick="createAlert()" class="px-4 py-2 bg-red-600 text-white rounded mr-2">Créer</button>
+                                <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                            </div>
+                        ` : ''}
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6"><p class="text-sm"><strong>Info:</strong> Visible par tous les enseignants</p></div>
+                        ${S.alerts.map(a => `
+                            <div class="p-4 bg-red-50 border-l-4 border-red-500 rounded mb-2 flex justify-between">
+                                <div><p class="font-bold text-red-800">${a.title}</p><p class="text-sm">${a.description}</p><p class="text-xs text-gray-500 mt-1">Par ${a.created_by} - ${new Date(a.date).toLocaleString()}</p></div>
+                                <button onclick="delAlert(${a.id})" class="text-red-600">🗑️</button>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    return `
+                        <h2 class="text-2xl font-bold mb-6">Alertes administration</h2>
+                        ${S.alerts.length === 0 ? '<p class="text-gray-500">Aucune alerte</p>' : S.alerts.map(a => `
+                            <div class="p-4 bg-red-50 border-l-4 border-red-500 rounded mb-2">
+                                <p class="font-bold text-red-800">${a.title}</p><p class="text-sm">${a.description}</p><p class="text-xs text-gray-500 mt-1">Par ${a.created_by} - ${new Date(a.date).toLocaleString()}</p>
+                            </div>
+                        `).join('')}
+                    `;
+                }
+            }
+
+            if (S.tab === 'messages') {
+                const msgs = !isAdmin && tc ? S.messages.filter(m => m.class_id === tc.id) : S.messages;
+                return `
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Messages</h2>
+                        ${isAdmin ? `<button onclick="showForm('message')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Nouveau</button>` : ''}
+                    </div>
+                    ${S.showForm === 'message' ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                            <input type="text" id="mtitle" placeholder="Titre" class="w-full px-3 py-2 mb-2 border rounded">
+                            <textarea id="mcontent" placeholder="Contenu" class="w-full px-3 py-2 mb-2 border rounded h-24"></textarea>
+                            <select id="mcid" class="w-full px-3 py-2 mb-2 border rounded">
+                                <option value="">Classe</option>
+                                ${S.classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                            </select>
+                            <select id="mcat" class="w-full px-3 py-2 mb-2 border rounded">
+                                <option value="information">Information</option><option value="sortie">Sortie</option><option value="annonce">Annonce</option>
+                            </select>
+                            <button onclick="sendMsg()" class="px-4 py-2 bg-blue-600 text-white rounded mr-2">Envoyer</button>
+                            <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                        </div>
+                    ` : ''}
+                    ${msgs.map(m => {
+                        const bg = m.category === 'sortie' ? 'bg-green-50 border-green-300' : m.category === 'information' ? 'bg-blue-50 border-blue-300' : 'bg-orange-50 border-orange-300';
+                        return `<div class="${bg} p-4 border-l-4 rounded mb-2"><div class="flex justify-between"><h3 class="font-bold">${m.title}</h3><span class="text-xs text-gray-500">${new Date(m.date).toLocaleString()}</span></div><p class="text-sm mt-1">${m.content}</p><p class="text-xs text-gray-500 mt-2">Classe: ${S.classes.find(c=>c.id===m.class_id)?.name} • Par: ${m.sender}</p></div>`;
+                    }).join('')}
+                `;
+            }
+
+            if (S.tab === 'homework') {
+                const hws = !isAdmin && tc ? S.homework.filter(h => h.class_id === tc.id) : S.homework;
+                return `
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Cahier de texte</h2>
+                        ${!isAdmin && tc ? `<button onclick="showForm('homework')" class="px-4 py-2 bg-blue-600 text-white rounded-lg">➕ Ajouter</button>` : ''}
+                    </div>
+                    ${S.showForm === 'homework' ? `
+                        <div class="mb-6 p-4 bg-blue-50 rounded-lg">
+                            <input type="text" id="hsub" placeholder="Matière" class="w-full px-3 py-2 mb-2 border rounded">
+                            <textarea id="hdesc" placeholder="Description" class="w-full px-3 py-2 mb-2 border rounded h-24"></textarea>
+                            <input type="date" id="hdue" class="w-full px-3 py-2 mb-2 border rounded">
+                            <button onclick="addHW()" class="px-4 py-2 bg-blue-600 text-white rounded mr-2">Ajouter</button>
+                            <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                        </div>
+                    ` : ''}
+                    ${hws.map(h => `
+                        <div class="p-4 bg-gray-50 rounded border mb-3">
+                            <div class="flex justify-between mb-2">
+                                <div><h3 class="font-bold text-lg">${h.subject}</h3><p class="text-sm text-gray-600">Classe: ${S.classes.find(c=>c.id===h.class_id)?.name}</p></div>
+                                ${isAdmin ? `<button onclick="delHW(${h.id})" class="text-red-600">🗑️</button>` : ''}
+                            </div>
+                            <p class="mb-2">${h.description}</p>
+                            <div class="flex justify-between text-sm"><span class="text-gray-500">Pour le: ${h.due_date}</span><span class="text-gray-500">Par ${h.teacher_name}</span></div>
                         </div>
                     `).join('')}
                 `;
             }
 
-            if (state.activeTab === 'messages') {
+            if (S.tab === 'attendance' && !isAdmin) {
                 return `
-                    <h2 class="text-2xl font-bold mb-6">Messages</h2>
-                    ${state.messages.map(m => `
-                        <div class="p-4 bg-blue-50 border-l-4 border-blue-500 rounded mb-3">
-                            <h3 class="font-bold">${m.title}</h3>
-                            <p>${m.content}</p>
-                            <p class="text-xs text-gray-500">${new Date(m.date).toLocaleString()}</p>
+                    <h2 class="text-2xl font-bold mb-6">Faire l'appel</h2>
+                    ${S.showForm === 'attendance' ? `
+                        <div class="mb-6 p-4 bg-green-50 rounded-lg">
+                            <p class="mb-3">Classe: ${tc?.name || 'Non assignée'}</p>
+                            ${tc ? `
+                                <div class="space-y-2 mb-4" id="attList">
+                                    ${S.students.filter(s => s.class_id === tc.id).map(s => `
+                                        <button onclick="toggleAtt(${s.id})" id="att${s.id}" class="w-full p-3 bg-gray-100 hover:bg-gray-200 rounded text-left">
+                                            ${s.first_name} ${s.last_name}
+                                        </button>
+                                    `).join('')}
+                                </div>
+                                <button onclick="submitAtt()" class="px-4 py-2 bg-green-600 text-white rounded mr-2">Valider</button>
+                                <button onclick="S.showForm=null;render()" class="px-4 py-2 bg-gray-300 rounded">Annuler</button>
+                            ` : '<p>Vous n\'avez pas de classe assignée</p>'}
                         </div>
-                    `).join('')}
+                    ` : `<button onclick="showForm('attendance')" class="px-4 py-2 bg-green-600 text-white rounded">Commencer l'appel</button>`}
                 `;
             }
 
-            return '<p class="text-gray-500">Section vide...</p>';
+            if (S.tab === 'attendance-view' && isAdmin) {
+                return `
+                    <h2 class="text-2xl font-bold mb-6">Appels reçus</h2>
+                    <table class="w-full"><thead class="bg-gray-100"><tr><th class="px-4 py-2 text-left">Élève</th><th class="px-4 py-2 text-left">Classe</th><th class="px-4 py-2 text-left">Statut</th><th class="px-4 py-2 text-left">Raison</th><th class="px-4 py-2 text-left">Date</th><th class="px-4 py-2 text-left">Enseignant</th></tr></thead>
+                    <tbody>${S.attendance.map(a => `<tr class="border-b"><td class="px-4 py-3">${a.student_name}</td><td class="px-4 py-3">${a.class_name}</td><td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-semibold ${a.present?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}">${a.present?'Présent':'Absent'}</span></td><td class="px-4 py-3">${a.reason||'-'}</td><td class="px-4 py-3">${a.date}</td><td class="px-4 py-3">${a.teacher_name}</td></tr>`).join('')}</tbody></table>
+                `;
+            }
+
+            if (S.tab === 'schedule' && !isAdmin && tc) {
+                const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
+                const scheds = S.schedules.filter(s => s.class_id === tc.id);
+                return `
+                    <h2 class="text-2xl font-bold mb-6">Emploi du temps - ${tc.name}</h2>
+                    <div class="grid grid-cols-5 gap-4">
+                        ${days.map(d => `
+                            <div>
+                                <h3 class="font-bold text-center p-3 bg-gray-200 rounded-t">${d}</h3>
+                                <div class="space-y-2 p-2 bg-gray-50 rounded-b min-h-96">
+                                    ${scheds.filter(s => s.day === d).sort((a,b) => a.start_time.localeCompare(b.start_time)).map(s => `
+                                        <div class="p-3 rounded text-white" style="background-color:${s.color}">
+                                            <p class="font-semibold text-sm">${s.subject}</p>
+                                            <p class="text-xs">${s.start_time} - ${s.end_time}</p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            return '<p class="text-gray-500">Section non disponible</p>';
         }
 
         function login() {
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            handleLogin(username, password);
+            const u = document.getElementById('u').value;
+            const p = document.getElementById('p').value;
+            const user = S.accounts.find(a => a.username === u && a.password === p);
+            if (user) { S.user = user; render(); }
+            else alert('Identifiants incorrects');
         }
 
-        function changeTab(tab) {
-            state.activeTab = tab;
+        function logout() { S.user = null; S.tab = 'dashboard'; render(); }
+        function tab(t) { S.tab = t; S.showForm = null; render(); }
+        function showForm(f) { S.showForm = f; render(); }
+
+        async function createAccount() {
+            const data = {name: document.getElementById('name').value, username: document.getElementById('username').value, password: document.getElementById('password').value, role: 'teacher'};
+            const r = await supabase.from('accounts').insert([data]);
+            if (r.data) { S.accounts.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function createClass() {
+            const data = {name: document.getElementById('cname').value, level: document.getElementById('level').value, teacher_id: null};
+            const r = await supabase.from('classes').insert([data]);
+            if (r.data) { S.classes.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function updateTeacher(cid, tid) {
+            const r = await supabase.from('classes').update({teacher_id: tid ? parseInt(tid) : null}).eq('id', cid);
+            if (r.data) { S.classes = S.classes.map(c => c.id === cid ? {...c, teacher_id: tid ? parseInt(tid) : null} : c); render(); }
+        }
+
+        async function addStudent() {
+            const data = {first_name: document.getElementById('fname').value, last_name: document.getElementById('lname').value, birth_date: document.getElementById('bdate').value, class_id: parseInt(document.getElementById('scid').value)};
+            const r = await supabase.from('students').insert([data]);
+            if (r.data) { S.students.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function createAlert() {
+            const data = {title: document.getElementById('atitle').value, description: document.getElementById('adesc').value, created_by: S.user.name, date: new Date().toISOString()};
+            const r = await supabase.from('alerts').insert([data]);
+            if (r.data) { S.alerts.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function delAlert(id) {
+            if (!confirm('Supprimer ?')) return;
+            await supabase.from('alerts').delete().eq('id', id);
+            S.alerts = S.alerts.filter(a => a.id !== id);
             render();
         }
 
-        // Rafraîchir comptes (recharge depuis Supabase)
-        async function refreshAccounts() {
-            const res = await supabase.from('accounts').select();
-            state.accounts = res.data || [];
+        async function sendMsg() {
+            const data = {title: document.getElementById('mtitle').value, content: document.getElementById('mcontent').value, class_id: parseInt(document.getElementById('mcid').value), category: document.getElementById('mcat').value, sender: S.user.name, date: new Date().toISOString()};
+            const r = await supabase.from('messages').insert([data]);
+            if (r.data) { S.messages.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function addHW() {
+            const tc = S.classes.find(c => c.teacher_id === S.user.id);
+            if (!tc) { alert('Pas de classe'); return; }
+            const data = {subject: document.getElementById('hsub').value, description: document.getElementById('hdesc').value, due_date: document.getElementById('hdue').value, class_id: tc.id, teacher_id: S.user.id, teacher_name: S.user.name, created_date: new Date().toISOString()};
+            const r = await supabase.from('homework').insert([data]);
+            if (r.data) { S.homework.push(...r.data); S.showForm = null; render(); }
+        }
+
+        async function delHW(id) {
+            if (!confirm('Supprimer ?')) return;
+            await supabase.from('homework').delete().eq('id', id);
+            S.homework = S.homework.filter(h => h.id !== id);
             render();
         }
 
-        // ----- Gestion comptes (admin) -----
-        // Ouvre modal de création / édition. Si id == null => création, sinon édition.
-        function showAccountForm(id = null) {
-            // Si id fourni, on préremplit
-            const account = id ? (state.accounts.find(a => a.id === id) || {}) : {};
-            // Création du modal
-            const modal = document.createElement('div');
-            modal.id = 'account-modal';
-            modal.className = 'fixed inset-0 bg-black/40 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-xl font-bold">${id ? 'Modifier le compte' : 'Créer un compte'}</h3>
-                        <button id="close-modal" class="text-gray-500 hover:text-gray-700">✖</button>
-                    </div>
-                    <div class="space-y-3">
-                        <input id="acct-name" placeholder="Nom complet" class="w-full px-4 py-2 border rounded" value="${escapeHtml(account.name || '')}">
-                        <input id="acct-username" placeholder="Username" class="w-full px-4 py-2 border rounded" value="${escapeHtml(account.username || '')}">
-                        <input id="acct-password" placeholder="Mot de passe" class="w-full px-4 py-2 border rounded" value="${escapeHtml(account.password || '')}">
-                        <select id="acct-role" class="w-full px-4 py-2 border rounded">
-                            <option value="admin" ${account.role === 'admin' ? 'selected' : ''}>admin</option>
-                            <option value="teacher" ${account.role === 'teacher' ? 'selected' : ''}>teacher</option>
-                            <option value="student" ${account.role === 'student' ? 'selected' : ''}>student</option>
-                        </select>
-                        <select id="acct-class" class="w-full px-4 py-2 border rounded">
-                            <option value="">— Aucune classe —</option>
-                            ${state.classes.map(c => `<option value="${c.id}" ${account.class_id == c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
-                        </select>
-                        <div class="flex justify-end gap-2 mt-4">
-                            ${id ? `<button id="delete-account-btn" class="px-4 py-2 bg-red-500 text-white rounded">Supprimer</button>` : ''}
-                            <button id="cancel-account" class="px-4 py-2 bg-gray-200 rounded">Annuler</button>
-                            <button id="save-account" class="px-4 py-2 bg-blue-600 text-white rounded">${id ? 'Enregistrer' : 'Créer'}</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-
-            // events
-            document.getElementById('close-modal').onclick = () => modal.remove();
-            document.getElementById('cancel-account').onclick = () => modal.remove();
-
-            document.getElementById('save-account').onclick = async () => {
-                const payload = {
-                    name: document.getElementById('acct-name').value.trim(),
-                    username: document.getElementById('acct-username').value.trim(),
-                    password: document.getElementById('acct-password').value,
-                    role: document.getElementById('acct-role').value,
-                    class_id: document.getElementById('acct-class').value ? parseInt(document.getElementById('acct-class').value) : null
-                };
-
-                if (!payload.username || !payload.name || !payload.password) {
-                    alert('Remplis au moins le nom, le username et le mot de passe.');
-                    return;
-                }
-
-                if (!id) {
-                    // create
-                    const res = await supabase.from('accounts').insert([payload]);
-                    if (res.error) {
-                        alert('Erreur lors de la création');
-                    } else {
-                        // push nouveaux comptes s'ils sont retournés
-                        if (res.data && res.data.length > 0) state.accounts.push(...res.data);
-                        else {
-                            // si l'API retourne rien, on récupère à nouveau
-                            await refreshAccounts();
-                        }
-                        modal.remove();
-                        render();
-                        alert('Compte créé ✅');
-                    }
-                } else {
-                    // update
-                    const updater = await supabase.from('accounts').update(payload);
-                    const res = await updater.eq('id', id);
-                    if (res.error) {
-                        alert('Erreur lors de la mise à jour');
-                    } else {
-                        // remplacer local
-                        state.accounts = state.accounts.map(a => a.id === id ? ({ ...a, ...payload }) : a);
-                        modal.remove();
-                        render();
-                        alert('Compte mis à jour ✅');
-                    }
-                }
-            };
-
-            if (id) {
-                document.getElementById('delete-account-btn').onclick = async () => {
-                    if (!confirm('Supprimer ce compte ?')) return;
-                    const res = await supabase.from('accounts').delete().eq('id', id);
-                    if (res.error) alert('Erreur suppression');
-                    else {
-                        state.accounts = state.accounts.filter(a => a.id !== id);
-                        modal.remove();
-                        render();
-                        alert('Compte supprimé ✅');
-                    }
-                };
-            }
-        }
-
-        // Supprime un compte (depuis la liste)
-        async function deleteAccount(id) {
-            if (!confirm('Supprimer ce compte ?')) return;
-            const res = await supabase.from('accounts').delete().eq('id', id);
-            if (res.error) {
-                alert('Erreur suppression');
+        let presentIds = [];
+        function toggleAtt(id) {
+            const btn = document.getElementById('att' + id);
+            if (presentIds.includes(id)) {
+                presentIds = presentIds.filter(i => i !== id);
+                btn.className = 'w-full p-3 bg-gray-100 hover:bg-gray-200 rounded text-left';
             } else {
-                state.accounts = state.accounts.filter(a => a.id !== id);
-                render();
-                alert('Compte supprimé ✅');
+                presentIds.push(id);
+                btn.className = 'w-full p-3 bg-green-500 text-white font-semibold rounded text-left';
             }
         }
 
-        // ---- Autres fonctions existantes ----
-        async function markAttendance(studentId, isPresent) {
-            const teacherClass = state.classes.find(c => c.teacher_id === state.currentUser.id);
-            if (!teacherClass) return alert("Aucune classe trouvée.");
-            const newEntry = {
-                student_id: studentId,
-                class_id: teacherClass.id,
+        async function submitAtt() {
+            const tc = S.classes.find(c => c.teacher_id === S.user.id);
+            if (!tc) return;
+            const studs = S.students.filter(s => s.class_id === tc.id);
+            const reasons = ['Enfant malade', 'Retard', 'Problème de route', 'Rendez-vous médical', 'Absence justifiée'];
+            const data = studs.map(s => ({
+                student_id: s.id,
+                student_name: `${s.first_name} ${s.last_name}`,
+                class_id: tc.id,
+                class_name: tc.name,
+                present: presentIds.includes(s.id),
+                reason: presentIds.includes(s.id) ? null : reasons[Math.floor(Math.random() * reasons.length)],
                 date: new Date().toISOString().split('T')[0],
-                present: isPresent
-            };
-            const result = await supabase.from('attendance').insert([newEntry]);
-            if (result.error) alert("Erreur lors de l'enregistrement !");
-            else alert("Présence enregistrée ✅");
-        }
-
-        // Démo admin : loggue le premier admin du tableau (utile si pas d'UI d'inscription)
-        function demoAdmin() {
-            const admin = state.accounts.find(a => a.role === 'admin');
-            if (admin) {
-                state.currentUser = admin;
-                state.activeTab = 'dashboard';
-                render();
-            } else {
-                alert('Aucun admin trouvé dans la base. Crée en un via Supabase ou via la console.');
+                teacher_name: S.user.name
+            }));
+            const r = await supabase.from('attendance').insert(data);
+            if (r.data) { 
+                S.attendance.push(...r.data); 
+                presentIds = [];
+                S.showForm = null; 
+                alert('Appel enregistré !');
+                render(); 
             }
         }
 
-        // Petit helper pour échapper les valeurs insérées dans le HTML
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        // Init
-        loadData();
+        init();
     </script>
 </body>
 </html>
