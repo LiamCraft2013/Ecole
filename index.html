@@ -424,8 +424,9 @@
         }
 
         async function updateTeacher(cid, tid) {
-            const r = await supabase.from('classes').update({teacher_id: tid ? parseInt(tid) : null}).eq('id', cid);
-            if (r.data) { S.classes = S.classes.map(c => c.id === cid ? {...c, teacher_id: tid ? parseInt(tid) : null} : c); render(); }
+            await supabase.from('classes').update({teacher_id: tid ? parseInt(tid) : null}).eq('id', cid);
+            S.classes = S.classes.map(c => c.id === cid ? {...c, teacher_id: tid ? parseInt(tid) : null} : c);
+            await init();
         }
 
         async function addStudent() {
